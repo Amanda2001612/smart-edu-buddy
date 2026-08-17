@@ -1,5 +1,5 @@
 const API_KEY = process.env.GEMINI_API_KEY;
-const activeModelName = "gemini-1.0-pro";
+const activeModelName = "gemini-1.5-flash";
 
 async function queryGemini(promptText) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModelName}:generateContent?key=${API_KEY}`;

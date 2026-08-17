@@ -54,16 +54,24 @@ router.all(['/ask', '/api/chat'], async (req, res) => {
     }
 });
 
-// 2. Audio Stream Endpoint (රොබෝ සින්දුව අහන තැන)
+// 2. Audio Stream Endpoint - අලුත් ක්‍රමය (Buffer Method)
 router.get('/audio.mp3', (req, res) => {
     if (!latestAudioUrl) return res.status(404).send("No audio stream available.");
-    https.get(latestAudioUrl, (stream) => {
-        res.setHeader('Content-Type', 'audio/mpeg');
-        res.setHeader('Accept-Ranges', 'bytes');
-        stream.pipe(res);
+    
+    https.get(latestAudioUrl, (response) => {
+        let data = [];
+        response.on('data', (chunk) => data.push(chunk));
+        response.on('end', () => {
+            let audioBuffer = Buffer.concat(data);
+            res.setHeader('Content-Type', 'audio/mpeg');
+            res.setHeader('Content-Length', audioBuffer.length); // 🔴 MP3 එකේ සයිස් එක ESP එකට දන්වීම!
+            res.send(audioBuffer);
+        });
     }).on('error', (err) => {
         res.status(500).send("Audio streaming error");
     });
 });
+
+module.exports = router;
 
 module.exports = router;

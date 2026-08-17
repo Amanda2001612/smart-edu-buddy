@@ -17,7 +17,7 @@ const config = {
   api: {
     gemini: {
       baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models',
-      model: 'gemini-1.5-flash',  // Updated model - more stable
+      model: 'gemini-pro',  // Correct model name for v1beta
       apiKey: process.env.AI_API_KEY,
       timeout: 30000, // 30 seconds
     },

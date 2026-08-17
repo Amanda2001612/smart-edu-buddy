@@ -1,0 +1,11 @@
+# nodemon configuration for local development
+# Files/folders to ignore during development
+
+node_modules
+logs
+.env
+.git
+.gitignore
+package-lock.json
+README.md
+RENDER_DEPLOYMENT.md

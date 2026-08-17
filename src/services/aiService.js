@@ -1,83 +1,29 @@
-/**
- * AI Service
- * Handles all interactions with Google Gemini AI API
- */
+const API_KEY = process.env.GEMINI_API_KEY;
+const activeModelName = "gemini-1.0-pro";
 
-const { GoogleGenAI } = require('@google/genai');
-const { config } = require('../config/config');
-const { AppError } = require('../utils/errorHandler');
-const { HTTP_STATUS, ERROR_MESSAGES } = require('../constants/messages');
-const Logger = require('../utils/logger');
+async function queryGemini(promptText) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModelName}:generateContent?key=${API_KEY}`;
+    
+    const systemPrompt = `You are SmartEduBuddy, a friendly, loving, and encouraging educational AI robot companion for children aged 8 to 12. 
+    Instructions: 
+    1. Answer the child's question warmly, kindly, and educationally. 
+    2. Keep answers EXTREMELY short.
+    3. If Sinhala, reply in simple, friendly Sinhala (උපරිම වචන 10ක් ඇතුළත සරල සිංහලෙන්). 
+    4. Child's Question: "${promptText}"`;
 
-const logger = new Logger('AIService');
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
+    });
 
-// Single shared client instance
-const ai = new GoogleGenAI({ apiKey: config.api.gemini.apiKey });
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message);
 
-class AIService {
-  /**
-   * Get AI response from Gemini API
-   * @param {string} userQuestion - The user's question
-   * @returns {Promise<string>} - The AI response
-   */
-  static async getAIResponse(userQuestion) {
-    try {
-      if (!userQuestion || typeof userQuestion !== 'string') {
-        throw new AppError(
-          ERROR_MESSAGES.INVALID_INPUT,
-          HTTP_STATUS.BAD_REQUEST,
-          { field: 'userQuestion', value: userQuestion }
-        );
-      }
-
-      if (!config.api.gemini.apiKey) {
-        throw new AppError(
-          ERROR_MESSAGES.API_KEY_MISSING,
-          HTTP_STATUS.SERVER_ERROR
-        );
-      }
-
-      const prompt = `${config.ai.systemPrompt} ${userQuestion}`;
-
-      const response = await ai.models.generateContent({
-        model: config.api.gemini.model, // e.g. 'gemini-3.6-flash'
-        contents: prompt,
-      });
-
-      const rawText = response?.text;
-
-      if (!rawText) {
-        throw new AppError(
-          ERROR_MESSAGES.AI_REQUEST_FAILED,
-          HTTP_STATUS.SERVER_ERROR
-        );
-      }
-
-      // Clean up asterisks and format response
-      const answerText = rawText.replace(/\*/g, '');
-
-      logger.info('AI Response Generated', { userQuestion, responseLength: answerText.length });
-
-      return answerText;
-    } catch (error) {
-      logger.error('AI Service Error', {
-        message: error.message,
-        statusCode: error.statusCode,
-        apiError: error.response?.data,
-        apiStatus: error.status || error.response?.status,
-      });
-
-      if (error instanceof AppError) {
-        throw error;
-      }
-
-      throw new AppError(
-        ERROR_MESSAGES.AI_REQUEST_FAILED,
-        HTTP_STATUS.SERVER_ERROR,
-        { originalError: error.message }
-      );
+    if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
+        return data.candidates[0].content.parts[0].text.trim().replace(/[\*\_#]/g, '');
     }
-  }
+    throw new Error("No response from AI.");
 }
 
-module.exports = AIService;
+module.exports = { queryGemini };

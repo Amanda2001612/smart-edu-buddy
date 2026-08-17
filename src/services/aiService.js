@@ -40,7 +40,7 @@ class AIService {
       const prompt = `${config.ai.systemPrompt} ${userQuestion}`;
 
       const response = await ai.models.generateContent({
-        model: config.api.gemini.model, // e.g. 'gemini-2.5-flash'
+        model: config.api.gemini.model, // e.g. 'gemini-3.6-flash'
         contents: prompt,
       });
 

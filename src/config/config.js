@@ -16,7 +16,7 @@ const config = {
 
   api: {
     gemini: {
-      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash', // valid current model
+      model: process.env.GEMINI_MODEL || 'gemini-3.6-flash', // gemini-2.5-flash was sunset for new users as of Aug 2026
       apiKey: process.env.AI_API_KEY,
       timeout: 30000,
     },

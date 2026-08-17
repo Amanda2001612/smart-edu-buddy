@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <button onclick="startListening()" style="padding:20px; font-size:20px;">🎤 රොබෝට කතා කරන්න</button>
+    <p id="status">රොබෝ සූදානම්...</p>
+
+    <script>
+        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.lang = 'si-LK'; // සිංහල සපෝර්ට් කරනවා
+        recognition.interimResults = false;
+
+        function startListening() {
+            recognition.start();
+            document.getElementById('status').innerText = "සවන් දෙමින්...";
+        }
+
+        recognition.onresult = async (event) => {
+            const prompt = event.results[0][0].transcript;
+            document.getElementById('status').innerText = "ඔයා කිව්වේ: " + prompt;
+            
+            // සර්වර් එකට යැවීම
+            const res = await fetch('http://localhost:3000/ask', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ prompt: prompt })
+            });
+            const data = await res.json();
+            
+            // ශබ්දය ප්ලේ කිරීම
+            const audio = new Audio(data.audioUrl);
+            audio.play();
+        };
+    </script>
+</body>
+</html>

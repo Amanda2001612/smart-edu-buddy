@@ -1,3 +1,5 @@
 {"timestamp":"2026-08-17T13:47:52.401Z","level":"INFO","logger":"Server","message":"SmartEduBuddy Backend is running on port 3000","data":{"host":"localhost","env":"development"}}
 {"timestamp":"2026-08-17T14:22:08.577Z","level":"INFO","logger":"Server","message":"SmartEduBuddy Backend is running on port 3000","data":{"host":"localhost","env":"development"}}
 {"timestamp":"2026-08-17T14:22:43.957Z","level":"INFO","logger":"Server","message":"SmartEduBuddy Backend is running on port 3000","data":{"host":"localhost","env":"development"}}
+{"timestamp":"2026-08-17T14:27:36.515Z","level":"INFO","logger":"Server","message":"SmartEduBuddy Backend is running on port 3000","data":{"host":"localhost","env":"development"}}
+{"timestamp":"2026-08-17T14:27:38.642Z","level":"INFO","logger":"Server","message":"SmartEduBuddy Backend is running on port 3000","data":{"host":"localhost","env":"development"}}

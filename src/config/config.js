@@ -13,13 +13,12 @@ const config = {
     port: process.env.PORT || 3000,
     host: process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost'),
   },
-  
+
   api: {
     gemini: {
-      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models',
-      model: 'gemini-pro',  // Correct model name for v1beta
+      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash', // valid current model
       apiKey: process.env.AI_API_KEY,
-      timeout: 30000, // 30 seconds
+      timeout: 30000,
     },
     googleTTS: {
       lang: 'en',
@@ -36,7 +35,7 @@ const config = {
   },
 
   upload: {
-    maxFileSize: 50 * 1024 * 1024, // 50MB
+    maxFileSize: 50 * 1024 * 1024,
     maxFiles: 1,
     memoryStorage: true,
   },
@@ -47,13 +46,12 @@ const config = {
   },
 
   ai: {
-    responseLength: 'short', // 2 sentences for kids
+    responseLength: 'short',
     targetAudience: 'children aged 8-12',
     systemPrompt: 'You are a friendly educational robot for kids aged 8-12. Answer in 2 short sentences simply:',
   },
 };
 
-// Validate required environment variables
 const validateConfig = () => {
   if (!config.api.gemini.apiKey) {
     throw new Error('AI_API_KEY is not set in environment variables');

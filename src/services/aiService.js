@@ -3,13 +3,16 @@
  * Handles all interactions with Google Gemini AI API
  */
 
-const axios = require('axios');
+const { GoogleGenAI } = require('@google/genai');
 const { config } = require('../config/config');
 const { AppError } = require('../utils/errorHandler');
 const { HTTP_STATUS, ERROR_MESSAGES } = require('../constants/messages');
 const Logger = require('../utils/logger');
 
 const logger = new Logger('AIService');
+
+// Single shared client instance
+const ai = new GoogleGenAI({ apiKey: config.api.gemini.apiKey });
 
 class AIService {
   /**
@@ -36,29 +39,14 @@ class AIService {
 
       const prompt = `${config.ai.systemPrompt} ${userQuestion}`;
 
-      const response = await axios.post(
-        `${config.api.gemini.baseUrl}/${config.api.gemini.model}:generateContent`,
-        {
-          contents: [
-            {
-              parts: [
-                {
-                  text: prompt,
-                },
-              ],
-            },
-          ],
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': config.api.gemini.apiKey,
-          },
-          timeout: config.api.gemini.timeout,
-        }
-      );
+      const response = await ai.models.generateContent({
+        model: config.api.gemini.model, // e.g. 'gemini-2.5-flash'
+        contents: prompt,
+      });
 
-      if (!response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+      const rawText = response?.text;
+
+      if (!rawText) {
         throw new AppError(
           ERROR_MESSAGES.AI_REQUEST_FAILED,
           HTTP_STATUS.SERVER_ERROR
@@ -66,7 +54,7 @@ class AIService {
       }
 
       // Clean up asterisks and format response
-      const answerText = response.data.candidates[0].content.parts[0].text.replace(/\*/g, '');
+      const answerText = rawText.replace(/\*/g, '');
 
       logger.info('AI Response Generated', { userQuestion, responseLength: answerText.length });
 
@@ -76,7 +64,7 @@ class AIService {
         message: error.message,
         statusCode: error.statusCode,
         apiError: error.response?.data,
-        apiStatus: error.response?.status,
+        apiStatus: error.status || error.response?.status,
       });
 
       if (error instanceof AppError) {

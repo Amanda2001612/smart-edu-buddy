@@ -75,6 +75,8 @@ class AIService {
       logger.error('AI Service Error', {
         message: error.message,
         statusCode: error.statusCode,
+        apiError: error.response?.data,
+        apiStatus: error.response?.status,
       });
 
       if (error instanceof AppError) {

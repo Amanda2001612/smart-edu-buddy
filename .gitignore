@@ -1,2 +1,6 @@
+node_modules/
 .env
-node_modules
+logs/
+*.log
+temp_voice.mp3
+.DS_Store

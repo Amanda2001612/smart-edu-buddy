@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>
+        SmartEduBuddy Voice Test
+    </title>
+
+</head>
+
+
+<body>
+
+    <h1>
+        🤖 SmartEduBuddy Voice Test
+    </h1>
+
+
+    <p>
+        Robot Voice Backend Test
+    </p>
+
+
+    <div>
+
+        <label>
+            Child Name:
+        </label>
+
+        <input id="childName" value="Kasun">
+
+    </div>
+
+
+    <br>
+
+
+    <div>
+
+        <label>
+            Child Age:
+        </label>
+
+        <input id="childAge" type="number" value="9">
+
+    </div>
+
+
+    <br>
+
+
+    <button id="startButton">
+        🎤 Start Talking
+    </button>
+
+
+    <button id="stopButton" disabled>
+        ⏹ Stop & Ask Robot
+    </button>
+
+
+    <hr>
+
+
+    <p id="status">
+        Ready...
+    </p>
+
+
+    <h3>
+        Robot Heard:
+    </h3>
+
+    <p id="transcript">
+        -
+    </p>
+
+
+    <h3>
+        Robot Answer:
+    </h3>
+
+    <p id="answer">
+        -
+    </p>
+
+
+    <script>
+
+        let audioContext;
+
+        let microphoneStream;
+
+        let microphoneSource;
+
+        let processor;
+
+        let silentGain;
+
+        let recordingBuffers = [];
+
+        let inputSampleRate = 48000;
+
+        let recording = false;
+
+
+        /**
+         * Start microphone.
+         */
+        async function startRecording() {
+
+            try {
+
+                recordingBuffers = [];
+
+
+                microphoneStream =
+                    await navigator.mediaDevices
+                        .getUserMedia({
+                            audio: {
+
+                                channelCount: 1,
+
+                                echoCancellation: true,
+
+                                noiseSuppression: true,
+                            }
+                        });
+
+
+                audioContext =
+                    new (
+                        window.AudioContext ||
+                        window.webkitAudioContext
+                    )();
+
+
+                inputSampleRate =
+                    audioContext.sampleRate;
+
+
+                microphoneSource =
+                    audioContext
+                        .createMediaStreamSource(
+                            microphoneStream
+                        );
+
+
+                /**
+                 * Quick prototype recorder.
+                 */
+                processor =
+                    audioContext
+                        .createScriptProcessor(
+                            4096,
+                            1,
+                            1
+                        );
+
+
+                silentGain =
+                    audioContext
+                        .createGain();
+
+
+                silentGain.gain.value =
+                    0;
+
+
+                processor.onaudioprocess =
+                    function (event) {
+
+                        if (
+                            !recording
+                        ) {
+                            return;
+                        }
+
+
+                        const input =
+                            event.inputBuffer
+                                .getChannelData(0);
+
+
+                        recordingBuffers.push(
+                            new Float32Array(
+                                input
+                            )
+                        );
+                    };
+
+
+                microphoneSource
+                    .connect(
+                        processor
+                    );
+
+
+                processor
+                    .connect(
+                        silentGain
+                    );
+
+
+                silentGain
+                    .connect(
+                        audioContext.destination
+                    );
+
+
+                recording =
+                    true;
+
+
+                document
+                    .getElementById(
+                        'status'
+                    )
+                    .innerText =
+                    '🎤 Listening... Ask your question now.';
+
+
+                document
+                    .getElementById(
+                        'startButton'
+                    )
+                    .disabled =
+                    true;
+
+
+                document
+                    .getElementById(
+                        'stopButton'
+                    )
+                    .disabled =
+                    false;
+
+
+            } catch (
+            error
+            ) {
+
+                console.error(
+                    error
+                );
+
+
+                document
+                    .getElementById(
+                        'status'
+                    )
+                    .innerText =
+                    'Microphone Error: ' +
+                    error.message;
+            }
+        }
+
+
+        /**
+         * Stop microphone.
+         */
+        async function stopRecording() {
+
+            if (
+                !recording
+            ) {
+                return;
+            }
+
+
+            recording =
+                false;
+
+
+            document
+                .getElementById(
+                    'status'
+                )
+                .innerText =
+                '🧠 Processing voice...';
+
+
+            document
+                .getElementById(
+                    'stopButton'
+                )
+                .disabled =
+                true;
+
+
+            /**
+             * Disconnect microphone.
+             */
+            if (
+                microphoneSource
+            ) {
+
+                microphoneSource
+                    .disconnect();
+            }
+
+
+            if (
+                processor
+            ) {
+
+                processor
+                    .disconnect();
+            }
+
+
+            if (
+                silentGain
+            ) {
+
+                silentGain
+                    .disconnect();
+            }
+
+
+            if (
+                microphoneStream
+            ) {
+
+                microphoneStream
+                    .getTracks()
+                    .forEach(
+                        track =>
+                            track.stop()
+                    );
+            }
+
+
+            /**
+             * Merge recording data.
+             */
+            const mergedAudio =
+                mergeBuffers(
+                    recordingBuffers
+                );
+
+
+            /**
+             * Convert to 16 kHz
+             * for speech processing.
+             */
+            const downsampledAudio =
+                downsampleBuffer(
+
+                    mergedAudio,
+
+                    inputSampleRate,
+
+                    16000
+                );
+
+
+            /**
+             * Encode as WAV.
+             */
+            const wavBlob =
+                encodeWAV(
+                    downsampledAudio,
+                    16000
+                );
+
+
+            if (
+                audioContext
+            ) {
+
+                await audioContext
+                    .close();
+            }
+
+
+            /**
+             * Send microphone recording
+             * to backend.
+             */
+            await sendVoiceToRobot(
+                wavBlob
+            );
+
+
+            document
+                .getElementById(
+                    'startButton'
+                )
+                .disabled =
+                false;
+        }
+
+
+        /**
+         * Merge audio chunks.
+         */
+        function mergeBuffers(
+            buffers
+        ) {
+
+            let totalLength =
+                0;
+
+
+            for (
+                const buffer
+                of buffers
+            ) {
+
+                totalLength +=
+                    buffer.length;
+            }
+
+
+            const result =
+                new Float32Array(
+                    totalLength
+                );
+
+
+            let offset =
+                0;
+
+
+            for (
+                const buffer
+                of buffers
+            ) {
+
+                result.set(
+                    buffer,
+                    offset
+                );
+
+
+                offset +=
+                    buffer.length;
+            }
+
+
+            return result;
+        }
+
+
+        /**
+         * Downsample browser microphone
+         * audio to 16 kHz.
+         */
+        function downsampleBuffer(
+            buffer,
+            inputRate,
+            outputRate
+        ) {
+
+            if (
+                outputRate ===
+                inputRate
+            ) {
+
+                return buffer;
+            }
+
+
+            if (
+                outputRate >
+                inputRate
+            ) {
+
+                throw new Error(
+                    'Output sample rate must be lower than input sample rate.'
+                );
+            }
+
+
+            const sampleRateRatio =
+                inputRate /
+                outputRate;
+
+
+            const newLength =
+                Math.round(
+                    buffer.length /
+                    sampleRateRatio
+                );
+
+
+            const result =
+                new Float32Array(
+                    newLength
+                );
+
+
+            let offsetResult =
+                0;
+
+
+            let offsetBuffer =
+                0;
+
+
+            while (
+                offsetResult <
+                result.length
+            ) {
+
+                const nextOffsetBuffer =
+                    Math.round(
+                        (
+                            offsetResult + 1
+                        ) *
+                        sampleRateRatio
+                    );
+
+
+                let accumulator =
+                    0;
+
+
+                let count =
+                    0;
+
+
+                for (
+                    let i =
+                        offsetBuffer;
+
+                    i <
+                    nextOffsetBuffer &&
+                    i <
+                    buffer.length;
+
+                    i++
+                ) {
+
+                    accumulator +=
+                        buffer[i];
+
+
+                    count++;
+                }
+
+
+                result[
+                    offsetResult
+                ] =
+                    count > 0
+                        ? accumulator /
+                        count
+                        : 0;
+
+
+                offsetResult++;
+
+
+                offsetBuffer =
+                    nextOffsetBuffer;
+            }
+
+
+            return result;
+        }
+
+
+        /**
+         * Encode PCM samples
+         * into WAV file.
+         */
+        function encodeWAV(
+            samples,
+            sampleRate
+        ) {
+
+            const buffer =
+                new ArrayBuffer(
+                    44 +
+                    samples.length * 2
+                );
+
+
+            const view =
+                new DataView(
+                    buffer
+                );
+
+
+            function writeString(
+                offset,
+                string
+            ) {
+
+                for (
+                    let i = 0;
+                    i <
+                    string.length;
+                    i++
+                ) {
+
+                    view.setUint8(
+                        offset + i,
+                        string.charCodeAt(
+                            i
+                        )
+                    );
+                }
+            }
+
+
+            /**
+             * RIFF header.
+             */
+            writeString(
+                0,
+                'RIFF'
+            );
+
+
+            view.setUint32(
+                4,
+                36 +
+                samples.length * 2,
+                true
+            );
+
+
+            writeString(
+                8,
+                'WAVE'
+            );
+
+
+            writeString(
+                12,
+                'fmt '
+            );
+
+
+            view.setUint32(
+                16,
+                16,
+                true
+            );
+
+
+            /**
+             * PCM format.
+             */
+            view.setUint16(
+                20,
+                1,
+                true
+            );
+
+
+            /**
+             * Mono.
+             */
+            view.setUint16(
+                22,
+                1,
+                true
+            );
+
+
+            view.setUint32(
+                24,
+                sampleRate,
+                true
+            );
+
+
+            view.setUint32(
+                28,
+                sampleRate * 2,
+                true
+            );
+
+
+            view.setUint16(
+                32,
+                2,
+                true
+            );
+
+
+            /**
+             * 16-bit PCM.
+             */
+            view.setUint16(
+                34,
+                16,
+                true
+            );
+
+
+            writeString(
+                36,
+                'data'
+            );
+
+
+            view.setUint32(
+                40,
+                samples.length * 2,
+                true
+            );
+
+
+            /**
+             * PCM samples.
+             */
+            let offset =
+                44;
+
+
+            for (
+                let i = 0;
+                i <
+                samples.length;
+                i++
+            ) {
+
+                let sample =
+                    Math.max(
+                        -1,
+                        Math.min(
+                            1,
+                            samples[i]
+                        )
+                    );
+
+
+                sample =
+                    sample < 0
+                        ? sample *
+                        0x8000
+                        : sample *
+                        0x7FFF;
+
+
+                view.setInt16(
+                    offset,
+                    sample,
+                    true
+                );
+
+
+                offset +=
+                    2;
+            }
+
+
+            return new Blob(
+                [
+                    view
+                ],
+                {
+                    type:
+                        'audio/wav'
+                }
+            );
+        }
+
+
+        /**
+         * Send spoken question
+         * to SmartEduBuddy backend.
+         */
+        async function sendVoiceToRobot(
+            wavBlob
+        ) {
+
+            try {
+
+                const childName =
+                    document
+                        .getElementById(
+                            'childName'
+                        )
+                        .value;
+
+
+                const childAge =
+                    document
+                        .getElementById(
+                            'childAge'
+                        )
+                        .value;
+
+
+                const formData =
+                    new FormData();
+
+
+                /**
+                 * IMPORTANT:
+                 *
+                 * Backend expects
+                 * field name = audio
+                 */
+                formData.append(
+                    'audio',
+                    wavBlob,
+                    'question.wav'
+                );
+
+
+                formData.append(
+                    'childName',
+                    childName
+                );
+
+
+                formData.append(
+                    'childAge',
+                    childAge
+                );
+
+
+                const response =
+                    await fetch(
+                        '/api/voice',
+                        {
+                            method:
+                                'POST',
+
+                            body:
+                                formData,
+                        }
+                    );
+
+
+                const data =
+                    await response
+                        .json();
+
+
+                console.log(
+                    data
+                );
+
+
+                if (
+                    !response.ok ||
+                    !data.success
+                ) {
+
+                    document
+                        .getElementById(
+                            'status'
+                        )
+                        .innerText =
+                        '❌ Error: ' +
+                        (
+                            data.message ||
+                            data.error ||
+                            'Unknown error'
+                        );
+
+
+                    return;
+                }
+
+
+                /**
+                 * Show exactly what
+                 * Gemini heard.
+                 */
+                document
+                    .getElementById(
+                        'transcript'
+                    )
+                    .innerText =
+                    data.transcript;
+
+
+                /**
+                 * Show complete answer.
+                 */
+                document
+                    .getElementById(
+                        'answer'
+                    )
+                    .innerText =
+                    data.answer;
+
+
+                document
+                    .getElementById(
+                        'status'
+                    )
+                    .innerText =
+                    '✅ Robot answered successfully';
+
+
+                /**
+                 * PLAY ROBOT VOICE.
+                 */
+                if (
+                    data.audioUrl
+                ) {
+
+                    const robotVoice =
+                        new Audio(
+                            data.audioUrl
+                        );
+
+
+                    await robotVoice
+                        .play();
+                }
+
+
+            } catch (
+            error
+            ) {
+
+                console.error(
+                    error
+                );
+
+
+                document
+                    .getElementById(
+                        'status'
+                    )
+                    .innerText =
+                    '❌ Error: ' +
+                    error.message;
+            }
+        }
+
+
+        document
+            .getElementById(
+                'startButton'
+            )
+            .addEventListener(
+                'click',
+                startRecording
+            );
+
+
+        document
+            .getElementById(
+                'stopButton'
+            )
+            .addEventListener(
+                'click',
+                stopRecording
+            );
+
+    </script>
+
+</body>
+
+</html>

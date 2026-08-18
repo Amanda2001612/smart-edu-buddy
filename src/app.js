@@ -1,29 +1,245 @@
-const express = require('express');
-const cors = require('cors');
-const chatRoutes = require('./routes/chatRoutes');
+/**
+ * SmartEduBuddy Express App
+ */
 
-const app = express();
+const express =
+    require(
+        'express'
+    );
 
-app.use(cors());
 
-// Parse JSON body and capture raw string for fallback parsing
-app.use(express.json({
-    verify: (req, res, buf, encoding) => {
-        req.rawBody = buf ? buf.toString(encoding || 'utf8') : '';
+const cors =
+    require(
+        'cors'
+    );
+
+
+const path =
+    require(
+        'path'
+    );
+
+
+const {
+    config,
+} =
+    require(
+        './config/config'
+    );
+
+
+const chatRoutes =
+    require(
+        './routes/chatRoutes'
+    );
+
+
+const voiceRoutes =
+    require(
+        './routes/voiceRoutes'
+    );
+
+
+const app =
+    express();
+
+
+app.set(
+    'trust proxy',
+    true
+);
+
+
+/**
+ * CORS
+ */
+app.use(
+    cors({
+
+        origin:
+            config.cors.origin,
+    })
+);
+
+
+/**
+ * JSON.
+ */
+app.use(
+    express.json({
+
+        limit:
+            '2mb',
+    })
+);
+
+
+/**
+ * Forms.
+ */
+app.use(
+    express.urlencoded({
+
+        extended:
+            true,
+
+        limit:
+            '2mb',
+    })
+);
+
+
+/**
+ * Public test page.
+ */
+const publicDirectory =
+    path.join(
+        __dirname,
+        '../public'
+    );
+
+
+app.use(
+    express.static(
+        publicDirectory
+    )
+);
+
+
+/**
+ * Home.
+ */
+app.get(
+    '/',
+    (
+        req,
+        res
+    ) => {
+
+        res.json({
+
+            success:
+                true,
+
+            name:
+                config.app.name,
+
+            version:
+                config.app.version,
+
+            status:
+                'online',
+
+            voiceLanguages: [
+
+                'Sinhala',
+
+                'English',
+            ],
+
+            endpoints: {
+
+                health:
+                    '/api/health',
+
+                voiceHealth:
+                    '/api/voice/health',
+
+                voice:
+                    '/api/voice',
+
+                typedDebug:
+                    '/api/chat',
+
+                models:
+                    '/api/models',
+
+                voiceTest:
+                    '/voice-test.html',
+            },
+        });
     }
-}));
-app.use(express.urlencoded({ extended: true }));
-app.use(express.text({ type: '*/*' }));
+);
 
-// Robust error handling middleware for body parsing errors (e.g., empty JSON, malformed JSON)
-app.use((err, req, res, next) => {
-    if (err instanceof SyntaxError || err.status === 400 || 'body' in err) {
-        req.body = req.rawBody || req.body || {};
-        return next();
+
+/**
+ * API routes.
+ */
+app.use(
+    '/',
+    chatRoutes
+);
+
+
+app.use(
+    '/',
+    voiceRoutes
+);
+
+
+/**
+ * 404.
+ */
+app.use(
+    (
+        req,
+        res
+    ) => {
+
+        res
+            .status(
+                404
+            )
+            .json({
+
+                success:
+                    false,
+
+                error:
+                    'ROUTE_NOT_FOUND',
+
+                path:
+                    req.originalUrl,
+            });
     }
-    next(err);
-});
+);
 
-app.use('/', chatRoutes);
 
-module.exports = app;
+/**
+ * Error handler.
+ */
+app.use(
+    (
+        error,
+        req,
+        res,
+        next
+    ) => {
+
+        console.error(
+            '[Unhandled Error]:',
+            error
+        );
+
+
+        res
+            .status(
+                500
+            )
+            .json({
+
+                success:
+                    false,
+
+                error:
+                    'INTERNAL_SERVER_ERROR',
+
+                message:
+                    error.message,
+            });
+    }
+);
+
+
+module.exports =
+    app;

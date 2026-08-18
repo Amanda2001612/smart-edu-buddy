@@ -7,16 +7,24 @@ const { queryGemini } = require('../services/aiService');
 let latestAudioUrl = "";
 
 // 1. ප්‍රශ්න භාරගන්නා Endpoint (රොබෝ කතා කරන්නේ මෙතැනටයි)
-router.post('/api/chat', async (req, res) => {
+router.post('/api/chat', async (expressReq, res) => {
     try {
-        // රොබෝ එවන "message" හෝ "prompt" එක ආරක්ෂිතව ලබාගැනීම
-        const prompt = req.body?.prompt || req.body?.message || req.query?.prompt || req.query?.q;
-        
-        if (!prompt) {
-            return res.status(400).json({ success: false, error: "Prompt required" });
+        let reqBody = expressReq.body;
+
+        // body එක string එකක් ලෙස ආවොත් එය JSON වලට හැරවීම
+        if (typeof reqBody === 'string' && reqBody.length > 0) {
+            try {
+                reqBody = JSON.parse(reqBody);
+            } catch (e) {
+                // Parse කරගන්න බැරි වුණොත් raw string එක message එක ලෙස ගැනීම
+                reqBody = { message: reqBody };
+            }
         }
 
-        const hostAddress = req.headers.host || "smart-edu-buddy.onrender.com";
+        // රොබෝ එවන "message" හෝ "prompt" එක ආරක්ෂිතව ලබාගැනීම
+        const prompt = reqBody?.prompt || reqBody?.message || expressReq.query?.prompt || expressReq.query?.q || "Hello";
+        
+        const hostAddress = expressReq.headers.host || "smart-edu-buddy.onrender.com";
         console.log(`\n[Child Query Received]: ${prompt}`);
 
         const reply = await queryGemini(prompt);
@@ -41,7 +49,7 @@ router.post('/api/chat', async (req, res) => {
     } catch (error) {
         console.error("[Error]:", error.message);
         const fallback = "මට තේරුණේ නැහැ යාලුවා, ආයෙත් කියන්නකෝ!";
-        const hostAddress = req.headers.host || "smart-edu-buddy.onrender.com";
+        const hostAddress = expressReq.headers.host || "smart-edu-buddy.onrender.com";
         
         latestAudioUrl = googleTTS.getAudioUrl(fallback, { 
             lang: 'si', slow: false, host: 'https://translate.google.com', timeout: 10000 

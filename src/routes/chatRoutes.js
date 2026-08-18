@@ -7,38 +7,42 @@ const { queryGemini } = require('../services/aiService');
 let latestAudioUrl = "";
 
 // 1. ප්‍රශ්න භාරගන්නා Endpoint (රොබෝ කතා කරන්නේ මෙතැනටයි)
-router.post('/api/chat', async (expressReq, res) => {
+router.all(['/api/chat', '/ask'], async (req, res) => {
     try {
-        let reqBody = expressReq.body;
-
-        // body එක string එකක් ලෙස ආවොත් එය JSON වලට හැරවීම
-        if (typeof reqBody === 'string' && reqBody.length > 0) {
-            try {
-                reqBody = JSON.parse(reqBody);
-            } catch (e) {
-                // Parse කරගන්න බැරි වුණොත් raw string එක message එක ලෙස ගැනීම
-                reqBody = { message: reqBody };
+        // ඩේටා ඕනෑම ක්‍රමයකින් (JSON, Query, Text) ආවත් ප්‍රශ්නයක් නැත, අල්ලා ගනී
+        let prompt = "Hello SmartEduBuddy!";
+        
+        if (req.body) {
+            if (typeof req.body === 'string' && req.body.trim().length > 0) {
+                try {
+                    const parsed = JSON.parse(req.body);
+                    prompt = parsed.message || parsed.prompt || req.body;
+                } catch (e) {
+                    prompt = req.body;
+                }
+            } else if (typeof req.body === 'object') {
+                prompt = req.body.message || req.body.prompt || prompt;
             }
         }
-
-        // රොබෝ එවන "message" හෝ "prompt" එක ආරක්ෂිතව ලබාගැනීම
-        const prompt = reqBody?.prompt || reqBody?.message || expressReq.query?.prompt || expressReq.query?.q || "Hello";
         
-        const hostAddress = expressReq.headers.host || "smart-edu-buddy.onrender.com";
+        if (req.query?.prompt) prompt = req.query.prompt;
+        if (req.query?.q) prompt = req.query.q;
+
+        const hostAddress = req.headers.host || "smart-edu-buddy.onrender.com";
         console.log(`\n[Child Query Received]: ${prompt}`);
 
+        // Gemini AI එකෙන් උත්තරය ලබාගැනීම
         const reply = await queryGemini(prompt);
         console.log(`[AI Reply]: ${reply}`);
 
         const lang = /[\u0D80-\u0DFF]/.test(reply) ? 'si' : 'en';
-        
-        // අකුරු 200 සීමාවට ගැලපෙන සේ සැකසීම
         const safeReply = reply.length > 190 ? reply.substring(0, 190) : reply;
 
         latestAudioUrl = googleTTS.getAudioUrl(safeReply, { 
             lang: lang, slow: false, host: 'https://translate.google.com', timeout: 10000
         });
         
+        // සාර්ථක ප්‍රතිචාරය යැවීම
         res.status(200).json({ 
             success: true,
             answer: safeReply, 
@@ -49,7 +53,7 @@ router.post('/api/chat', async (expressReq, res) => {
     } catch (error) {
         console.error("[Error]:", error.message);
         const fallback = "මට තේරුණේ නැහැ යාලුවා, ආයෙත් කියන්නකෝ!";
-        const hostAddress = expressReq.headers.host || "smart-edu-buddy.onrender.com";
+        const hostAddress = req.headers.host || "smart-edu-buddy.onrender.com";
         
         latestAudioUrl = googleTTS.getAudioUrl(fallback, { 
             lang: 'si', slow: false, host: 'https://translate.google.com', timeout: 10000 
@@ -64,13 +68,7 @@ router.post('/api/chat', async (expressReq, res) => {
     }
 });
 
-// පරණ /ask ලින්ක් එකටත් වැඩ කරන්න අවශ්‍ය නම් මෙන්න
-router.post('/ask', async (req, res) => {
-    req.url = '/api/chat';
-    router.handle(req, res);
-});
-
-// 2. Audio Stream Endpoint - Buffer Method එක
+// 2. Audio Stream Endpoint
 router.get('/audio.mp3', (req, res) => {
     if (!latestAudioUrl) return res.status(404).send("No audio stream available.");
     

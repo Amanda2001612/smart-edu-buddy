@@ -10,7 +10,6 @@ router.all(['/api/chat', '/ask'], async (req, res) => {
     try {
         let prompt = "Hello SmartEduBuddy!";
         
-        // රොබෝ එවන ඕනෑම ආකාරයක දත්තයක් ආරක්ෂිතව කියවා ගැනීම
         if (req.body) {
             if (typeof req.body === 'string' && req.body.trim().length > 0) {
                 try {
@@ -57,7 +56,7 @@ router.all(['/api/chat', '/ask'], async (req, res) => {
         });
         
         res.status(200).json({ 
-            success: true, // මෙතන true දමා ඇත, එවිට රොබෝ ක්‍රෑෂ් නොවී ශ්‍රව්‍ය ගොනුව ලබා ගනී
+            success: true,
             answer: fallback, 
             lang: 'si', 
             audioUrl: `https://${hostAddress}/audio.mp3` 

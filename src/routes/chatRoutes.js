@@ -6,12 +6,11 @@ const { queryGemini } = require('../services/aiService');
 
 let latestAudioUrl = "";
 
-// 1. ප්‍රශ්න භාරගන්නා Endpoint (රොබෝ කතා කරන්නේ මෙතැනටයි)
 router.all(['/api/chat', '/ask'], async (req, res) => {
     try {
-        // ඩේටා ඕනෑම ක්‍රමයකින් (JSON, Query, Text) ආවත් ප්‍රශ්නයක් නැත, අල්ලා ගනී
         let prompt = "Hello SmartEduBuddy!";
         
+        // රොබෝ එවන ඕනෑම ආකාරයක දත්තයක් ආරක්ෂිතව කියවා ගැනීම
         if (req.body) {
             if (typeof req.body === 'string' && req.body.trim().length > 0) {
                 try {
@@ -31,7 +30,6 @@ router.all(['/api/chat', '/ask'], async (req, res) => {
         const hostAddress = req.headers.host || "smart-edu-buddy.onrender.com";
         console.log(`\n[Child Query Received]: ${prompt}`);
 
-        // Gemini AI එකෙන් උත්තරය ලබාගැනීම
         const reply = await queryGemini(prompt);
         console.log(`[AI Reply]: ${reply}`);
 
@@ -42,7 +40,6 @@ router.all(['/api/chat', '/ask'], async (req, res) => {
             lang: lang, slow: false, host: 'https://translate.google.com', timeout: 10000
         });
         
-        // සාර්ථක ප්‍රතිචාරය යැවීම
         res.status(200).json({ 
             success: true,
             answer: safeReply, 
@@ -52,7 +49,7 @@ router.all(['/api/chat', '/ask'], async (req, res) => {
 
     } catch (error) {
         console.error("[Error]:", error.message);
-        const fallback = "මට තේරුණේ නැහැ යාලුවා, ආයෙත් කියන්නකෝ!";
+        const fallback = "ආයුබෝවන් යාලුවා!";
         const hostAddress = req.headers.host || "smart-edu-buddy.onrender.com";
         
         latestAudioUrl = googleTTS.getAudioUrl(fallback, { 
@@ -60,7 +57,7 @@ router.all(['/api/chat', '/ask'], async (req, res) => {
         });
         
         res.status(200).json({ 
-            success: false,
+            success: true, // මෙතන true දමා ඇත, එවිට රොබෝ ක්‍රෑෂ් නොවී ශ්‍රව්‍ය ගොනුව ලබා ගනී
             answer: fallback, 
             lang: 'si', 
             audioUrl: `https://${hostAddress}/audio.mp3` 
@@ -68,7 +65,6 @@ router.all(['/api/chat', '/ask'], async (req, res) => {
     }
 });
 
-// 2. Audio Stream Endpoint
 router.get('/audio.mp3', (req, res) => {
     if (!latestAudioUrl) return res.status(404).send("No audio stream available.");
     

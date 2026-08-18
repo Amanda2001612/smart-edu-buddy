@@ -4,12 +4,7 @@ const activeModelName = "models/gemini-1.5-flash";
 async function queryGemini(promptText) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModelName}:generateContent?key=${API_KEY}`;
     
-    const systemPrompt = `You are SmartEduBuddy, a friendly, loving, and encouraging educational AI robot companion for children aged 8 to 12. 
-    Instructions: 
-    1. Answer the child's question warmly, kindly, and educationally. 
-    2. Keep answers EXTREMELY short.
-    3. If Sinhala, reply in simple, friendly Sinhala (උපරිම වචන 10ක් ඇතුළත සරල සිංහලෙන්). 
-    4. Child's Question: "${promptText}"`;
+    const systemPrompt = `You are SmartEduBuddy, a friendly, loving, and encouraging educational AI robot companion for children. Answer warmly and keep it extremely short (උපරිම වචන 10ක් ඇතුළත සරල සිංහලෙන්). Child's Question: "${promptText}"`;
 
     const response = await fetch(url, {
         method: 'POST',

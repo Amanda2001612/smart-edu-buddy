@@ -9,7 +9,7 @@ let latestAudioUrl = "";
 let latestAudioBuffer = null;
 
 /**
- * Robustly fetch audio stream using https/http modules with redirect support and custom User-Agent.
+ * Robustly fetch audio stream from URL using https/http modules with redirect support and custom User-Agent.
  */
 function fetchAudioStream(url, callback, maxRedirects = 5) {
     if (!url) return callback(new Error("No URL provided"));
@@ -109,7 +109,7 @@ router.all(['/api/chat', '/ask'], async (req, res) => {
                 timeout: 10000
             });
 
-            // Reset and pre-fetch audio buffer so /audio.mp3 can respond instantly
+            // Reset and pre-fetch audio buffer into memory for immediate serving
             latestAudioBuffer = null;
             fetchAudioStream(latestAudioUrl, (err, buffer) => {
                 if (!err && buffer && buffer.length > 0) {
@@ -159,20 +159,58 @@ router.all(['/api/chat', '/ask'], async (req, res) => {
 });
 
 router.get('/audio.mp3', (req, res) => {
-    // If pre-buffered audio is ready, send it immediately
+    const serveBuffer = (buffer) => {
+        if (!buffer || buffer.length === 0) {
+            return res.status(500).set('Content-Type', 'text/plain').send("Audio streaming error");
+        }
+
+        const totalLength = buffer.length;
+        const range = req.headers.range;
+
+        if (range) {
+            const parts = range.replace(/bytes=/, "").split("-");
+            const start = parseInt(parts[0], 10) || 0;
+            const end = parts[1] ? parseInt(parts[1], 10) : totalLength - 1;
+
+            if (start >= totalLength || end >= totalLength) {
+                res.setHeader('Content-Range', `bytes */${totalLength}`);
+                return res.status(416).send('Requested Range Not Satisfiable');
+            }
+
+            const chunk = buffer.slice(start, end + 1);
+            res.writeHead(206, {
+                'Content-Range': `bytes ${start}-${end}/${totalLength}`,
+                'Accept-Ranges': 'bytes',
+                'Content-Length': chunk.length,
+                'Content-Type': 'audio/mpeg',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            });
+            return res.end(chunk);
+        } else {
+            res.writeHead(200, {
+                'Content-Type': 'audio/mpeg',
+                'Content-Length': totalLength,
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            });
+            return res.end(buffer);
+        }
+    };
+
+    // If pre-buffered audio is ready, serve immediately
     if (latestAudioBuffer && latestAudioBuffer.length > 0) {
-        res.setHeader('Content-Type', 'audio/mpeg');
-        res.setHeader('Content-Length', latestAudioBuffer.length);
-        res.setHeader('Accept-Ranges', 'bytes');
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        return res.status(200).send(latestAudioBuffer);
+        return serveBuffer(latestAudioBuffer);
     }
 
     if (!latestAudioUrl) {
         return res.status(404).set('Content-Type', 'text/plain').send("No audio stream available.");
     }
 
-    // Otherwise, fetch audio stream on demand
+    // On-demand fetch if buffer not pre-loaded yet
     fetchAudioStream(latestAudioUrl, (err, audioBuffer) => {
         if (err || !audioBuffer || audioBuffer.length === 0) {
             console.error("[Audio Endpoint Error]:", err ? err.message : "Empty audio buffer");
@@ -180,11 +218,7 @@ router.get('/audio.mp3', (req, res) => {
         }
 
         latestAudioBuffer = audioBuffer;
-        res.setHeader('Content-Type', 'audio/mpeg');
-        res.setHeader('Content-Length', audioBuffer.length);
-        res.setHeader('Accept-Ranges', 'bytes');
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.status(200).send(audioBuffer);
+        serveBuffer(audioBuffer);
     });
 });
 

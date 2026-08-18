@@ -6,7 +6,7 @@ const app = express();
 
 app.use(cors());
 
-// Parse JSON body and capture raw string in case of fallback
+// Parse JSON body and capture raw string for fallback parsing
 app.use(express.json({
     verify: (req, res, buf, encoding) => {
         req.rawBody = buf ? buf.toString(encoding || 'utf8') : '';

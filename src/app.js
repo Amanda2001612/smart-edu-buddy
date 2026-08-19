@@ -33,6 +33,10 @@ const chatRoutes =
         './routes/chatRoutes'
     );
 
+const uptimeRoutes =
+    require(
+        './routes/uptimeRoutes'
+    );
 
 const voiceRoutes =
     require(
@@ -174,6 +178,10 @@ app.use(
 app.use(
     '/',
     voiceRoutes
+);
+app.use(
+    '/',
+    uptimeRoutes
 );
 
 

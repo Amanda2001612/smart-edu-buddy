@@ -1,16 +1,45 @@
 /**
+ * ============================================================
  * SmartEduBuddy Voice API
+ * ============================================================
  *
- * Microphone
- *     ↓
+ * Existing Working Flow:
+ *
+ * Browser / Android
+ *      ↓
+ * POST /api/voice
+ *      ↓
  * Speech-to-Text
- *     ↓
- * Educational AI
- *     ↓
+ *      ↓
+ * Gemini Educational AI
+ *      ↓
  * Complete Answer
- *     ↓
+ *      ↓
  * TTS
+ *
+ *
+ * ESP8266 Direct Flow:
+ *
+ * POST /api/voice/raw
+ *
+ *
+ * ESP8266 Async Flow:
+ *
+ * POST /api/voice/raw-start
+ *      ↓
+ * returns jobId immediately
+ *      ↓
+ * Background:
+ * Speech → Gemini → TTS
+ *      ↓
+ * ESP8266 polls:
+ * GET /api/voice/job/:jobId
+ *      ↓
+ * READY + audioUrl
+ *
+ * ============================================================
  */
+
 
 const express =
     require(
@@ -21,6 +50,12 @@ const express =
 const multer =
     require(
         'multer'
+    );
+
+
+const crypto =
+    require(
+        'crypto'
     );
 
 
@@ -63,6 +98,59 @@ const {
 const router =
     express.Router();
 
+
+// ============================================================
+// ROBOT ASYNC JOB STORAGE
+// ============================================================
+
+const robotJobs =
+    new Map();
+
+
+const ROBOT_JOB_TTL =
+    15 *
+    60 *
+    1000;
+
+
+// ============================================================
+// CLEAN OLD ROBOT JOBS
+// ============================================================
+
+function cleanupRobotJobs() {
+
+    const now =
+        Date.now();
+
+
+    for (
+        const [
+            jobId,
+            job
+        ]
+        of robotJobs.entries()
+    ) {
+
+        if (
+            now -
+            job.createdAt >
+            ROBOT_JOB_TTL
+        ) {
+
+            robotJobs.delete(
+                jobId
+            );
+        }
+    }
+}
+
+
+// ============================================================
+// MULTER CONFIG
+//
+// Existing browser voice upload.
+// DO NOT CHANGE WORKING FLOW.
+// ============================================================
 
 const upload =
     multer({
@@ -107,9 +195,10 @@ const upload =
     });
 
 
-/**
- * Multer wrapper.
- */
+// ============================================================
+// MULTER WRAPPER
+// ============================================================
+
 function voiceUploadMiddleware(
     req,
     res,
@@ -121,6 +210,7 @@ function voiceUploadMiddleware(
     )(
         req,
         res,
+
         error => {
 
             if (
@@ -174,9 +264,16 @@ function voiceUploadMiddleware(
 }
 
 
-/**
- * Public URL.
- */
+// ============================================================
+// PUBLIC SERVER URL
+//
+// Local:
+// http://localhost:3000
+//
+// Render:
+// https://smart-edu-buddy.onrender.com
+// ============================================================
+
 function getPublicBaseUrl(
     req
 ) {
@@ -192,10 +289,20 @@ function getPublicBaseUrl(
 }
 
 
-/**
- * Actual robot voice endpoint.
- */
+// ============================================================
+// EXISTING WORKING ROUTE
+//
+// POST /api/voice
+//
+// Browser Voice Test
+// Android App
+//
+// IMPORTANT:
+// EXISTING API CALLS NOT CHANGED.
+// ============================================================
+
 router.post(
+
     '/api/voice',
 
     voiceUploadMiddleware,
@@ -206,6 +313,10 @@ router.post(
     ) => {
 
         try {
+
+            // =================================================
+            // AUDIO REQUIRED
+            // =================================================
 
             if (
                 !req.file
@@ -228,6 +339,10 @@ router.post(
                     });
             }
 
+
+            // =================================================
+            // CHILD PROFILE
+            // =================================================
 
             const childName =
                 String(
@@ -257,31 +372,39 @@ router.post(
 
 
             console.log('');
+
             console.log(
                 '================================================='
             );
+
 
             console.log(
                 '🎤 VOICE QUESTION RECEIVED'
             );
 
+
             console.log(
                 `[Child] ${childName}, Age ${childAge}`
             );
 
+
             console.log(
                 `[Audio] ${req.file.mimetype}`
             );
+
 
             console.log(
                 `[Size] ${req.file.size} bytes`
             );
 
 
-            /**
-             * STEP 1
-             * VOICE → TEXT
-             */
+            // =================================================
+            // STEP 1
+            // VOICE → TEXT
+            //
+            // EXISTING WORKING CALL
+            // =================================================
+
             const speechResult =
                 await transcribeAudio(
 
@@ -295,7 +418,12 @@ router.post(
                 speechResult.transcript;
 
 
+            // =================================================
+            // NO SPEECH
+            // =================================================
+
             if (
+                !transcript ||
                 transcript
                     .trim()
                     .toUpperCase() ===
@@ -321,22 +449,29 @@ router.post(
 
 
             console.log('');
+
             console.log(
                 '👦 Child actually asked:'
             );
+
 
             console.log(
                 transcript
             );
 
 
-            /**
-             * STEP 2
-             * TEXT → COMPLETE AI ANSWER
-             */
+            // =================================================
+            // STEP 2
+            // TEXT → COMPLETE GEMINI ANSWER
+            //
+            // EXISTING WORKING CALL
+            // =================================================
+
             const aiResult =
                 await queryGemini(
+
                     transcript,
+
                     {
 
                         childName,
@@ -351,19 +486,24 @@ router.post(
 
 
             console.log('');
+
             console.log(
                 '🤖 Complete AI Answer:'
             );
+
 
             console.log(
                 completeAnswer
             );
 
 
-            /**
-             * STEP 3
-             * ANSWER → VOICE
-             */
+            // =================================================
+            // STEP 3
+            // ANSWER → TTS
+            //
+            // EXISTING WORKING CALL
+            // =================================================
+
             let audioUrl =
                 null;
 
@@ -407,32 +547,33 @@ router.post(
                 `[Language] ${lang}`
             );
 
+
             console.log(
                 `[Answer Model] ${aiResult.model}`
             );
 
+
             console.log(
                 `[Audio URL] ${audioUrl}`
             );
+
 
             console.log(
                 '================================================='
             );
 
 
+            // =================================================
+            // RESPONSE
+            // =================================================
+
             return res.json({
 
                 success:
                     aiResult.success,
 
-                /**
-                 * Exact speech transcript.
-                 */
                 transcript,
 
-                /**
-                 * Complete answer.
-                 */
                 answer:
                     completeAnswer,
 
@@ -507,17 +648,22 @@ router.post(
 );
 
 
-/**
- * Voice health.
- */
+// ============================================================
+// EXISTING HEALTH ROUTE
+//
+// GET /api/voice/health
+// ============================================================
+
 router.get(
+
     '/api/voice/health',
+
     (
         req,
         res
     ) => {
 
-        res.json({
+        return res.json({
 
             success:
                 true,
@@ -539,6 +685,18 @@ router.get(
                 config.api.gemini
                     .model,
 
+            robotEndpoints: {
+
+                synchronous:
+                    '/api/voice/raw',
+
+                asyncStart:
+                    '/api/voice/raw-start',
+
+                asyncStatus:
+                    '/api/voice/job/:jobId',
+            },
+
             timestamp:
                 new Date()
                     .toISOString(),
@@ -546,43 +704,33 @@ router.get(
     }
 );
 
-/**
- * =====================================================
- * ESP8266 RAW WAV VOICE ENDPOINT
- * =====================================================
- *
- * IMPORTANT:
- *
- * Existing /api/voice route is NOT changed.
- *
- * This endpoint is only for the ESP8266 robot.
- *
- * POST:
- *
- * /api/voice/raw?childName=Kasun&childAge=9
- *
- * Header:
- *
- * Content-Type: audio/wav
- *
- * Body:
- *
- * Raw WAV audio bytes
- */
+
+// ============================================================
+// EXISTING RAW ESP8266 ENDPOINT
+//
+// POST /api/voice/raw
+//
+// This is kept.
+// Nothing removed.
+//
+// But ESP8266 final code should use
+// /api/voice/raw-start because the synchronous
+// version can take longer than ESP8266 timeout.
+// ============================================================
 
 router.post(
 
     '/api/voice/raw',
 
 
-    /**
-     * Read raw WAV bytes directly.
-     */
     express.raw({
 
         type: [
+
             'audio/wav',
+
             'audio/x-wav',
+
             'application/octet-stream',
         ],
 
@@ -604,13 +752,14 @@ router.post(
                 '==============================================='
             );
 
+
             console.log(
                 '🎤 ESP8266 RAW VOICE RECEIVED'
             );
 
 
             // =================================================
-            // 1. RAW AUDIO BUFFER
+            // RAW AUDIO
             // =================================================
 
             const audioBuffer =
@@ -627,7 +776,8 @@ router.post(
 
             if (
                 !audioBuffer ||
-                audioBuffer.length === 0
+                audioBuffer.length ===
+                0
             ) {
 
                 return res
@@ -649,7 +799,7 @@ router.post(
 
 
             // =================================================
-            // 2. CHILD PROFILE
+            // CHILD PROFILE
             // =================================================
 
             const childName =
@@ -690,14 +840,14 @@ router.post(
 
 
             // =================================================
-            // 3. MIME TYPE
+            // MIME TYPE
             // =================================================
 
             let mimeType =
                 String(
 
                     req.headers[
-                        'content-type'
+                    'content-type'
                     ] ||
 
                     'audio/wav'
@@ -712,10 +862,6 @@ router.post(
                     .toLowerCase();
 
 
-            /**
-             * If ESP sends generic binary type,
-             * treat it as WAV.
-             */
             if (
                 mimeType ===
                 'application/octet-stream'
@@ -732,9 +878,7 @@ router.post(
 
 
             // =================================================
-            // 4. SAME EXISTING SPEECH API CALL
-            //
-            // DO NOT CHANGE THIS.
+            // SAME WORKING SPEECH CALL
             // =================================================
 
             const speechResult =
@@ -789,9 +933,7 @@ router.post(
 
 
             // =================================================
-            // 5. SAME EXISTING GEMINI API CALL
-            //
-            // DO NOT CHANGE THIS.
+            // SAME WORKING GEMINI CALL
             // =================================================
 
             const aiResult =
@@ -835,9 +977,7 @@ router.post(
 
 
             // =================================================
-            // 6. SAME EXISTING TTS CALL
-            //
-            // DO NOT CHANGE THIS.
+            // SAME WORKING TTS CALL
             // =================================================
 
             const audio =
@@ -851,7 +991,7 @@ router.post(
 
 
             // =================================================
-            // 7. SAME AUDIO URL FORMAT
+            // SAME AUDIO URL
             // =================================================
 
             const publicBaseUrl =
@@ -888,10 +1028,6 @@ router.post(
                 '==============================================='
             );
 
-
-            // =================================================
-            // 8. COMPACT ESP8266 RESPONSE
-            // =================================================
 
             return res
                 .status(
@@ -931,7 +1067,7 @@ router.post(
 
 
         } catch (
-            error
+        error
         ) {
 
             console.error(
@@ -963,7 +1099,719 @@ router.post(
     }
 );
 
+
+// ============================================================
+// NEW ASYNC ESP8266 VOICE START
+//
+// POST
+//
+// /api/voice/raw-start?childName=Kasun&childAge=9
+//
+// Content-Type:
+// audio/wav
+//
+// Body:
+// raw question.wav
+//
+// IMPORTANT:
+//
+// ESP8266 does NOT wait here for Gemini.
+// Server returns HTTP 202 + jobId quickly.
+// ============================================================
+
+router.post(
+
+    '/api/voice/raw-start',
+
+
+    express.raw({
+
+        type: [
+
+            'audio/wav',
+
+            'audio/x-wav',
+
+            'application/octet-stream',
+        ],
+
+        limit:
+            config.upload.maxFileSize,
+    }),
+
+
+    async (
+        req,
+        res
+    ) => {
+
+        cleanupRobotJobs();
+
+
+        // =====================================================
+        // RAW AUDIO
+        // =====================================================
+
+        const audioBuffer =
+            Buffer.isBuffer(
+                req.body
+            )
+                ? req.body
+
+                : Buffer.from(
+                    req.body ||
+                    []
+                );
+
+
+        if (
+            !audioBuffer ||
+            audioBuffer.length ===
+            0
+        ) {
+
+            return res
+                .status(
+                    400
+                )
+                .json({
+
+                    success:
+                        false,
+
+                    error:
+                        'AUDIO_REQUIRED',
+
+                    message:
+                        'Raw WAV audio is required.',
+                });
+        }
+
+
+        // =====================================================
+        // CHILD PROFILE
+        // =====================================================
+
+        const childName =
+            String(
+
+                req.query.childName ||
+
+                req.query.name ||
+
+                config.child.defaultName
+            )
+                .trim() ||
+
+            config.child.defaultName;
+
+
+        const childAge =
+            Number(
+
+                req.query.childAge ||
+
+                req.query.age ||
+
+                config.child.defaultAge
+            ) ||
+
+            config.child.defaultAge;
+
+
+        // =====================================================
+        // MIME TYPE
+        // =====================================================
+
+        let mimeType =
+            String(
+
+                req.headers[
+                'content-type'
+                ] ||
+
+                'audio/wav'
+            )
+
+                .split(
+                    ';'
+                )[0]
+
+                .trim()
+
+                .toLowerCase();
+
+
+        if (
+            mimeType ===
+            'application/octet-stream'
+        ) {
+
+            mimeType =
+                'audio/wav';
+        }
+
+
+        // =====================================================
+        // CREATE JOB
+        // =====================================================
+
+        const jobId =
+            crypto.randomUUID();
+
+
+        const createdAt =
+            Date.now();
+
+
+        const publicBaseUrl =
+            getPublicBaseUrl(
+                req
+            );
+
+
+        robotJobs.set(
+
+            jobId,
+
+            {
+
+                status:
+                    'PROCESSING',
+
+                createdAt,
+
+                transcript:
+                    null,
+
+                lang:
+                    null,
+
+                audioUrl:
+                    null,
+
+                speechModel:
+                    null,
+
+                answerModel:
+                    null,
+
+                restricted:
+                    false,
+
+                restrictionReason:
+                    null,
+
+                error:
+                    null,
+            }
+        );
+
+
+        console.log('');
+
+        console.log(
+            '==============================================='
+        );
+
+
+        console.log(
+            '🤖 ESP8266 ASYNC VOICE JOB CREATED'
+        );
+
+
+        console.log(
+            `[Job ID] ${jobId}`
+        );
+
+
+        console.log(
+            `[Child] ${childName}, Age ${childAge}`
+        );
+
+
+        console.log(
+            `[Audio Size] ${audioBuffer.length} bytes`
+        );
+
+
+        console.log(
+            `[Audio MIME] ${mimeType}`
+        );
+
+
+        // =====================================================
+        // IMPORTANT:
+        //
+        // SEND RESPONSE TO ESP8266 IMMEDIATELY.
+        //
+        // No waiting for:
+        // - Gemini transcription
+        // - Gemini answer
+        // - TTS
+        // =====================================================
+
+        res
+            .status(
+                202
+            )
+            .json({
+
+                success:
+                    true,
+
+                jobId,
+
+                status:
+                    'PROCESSING',
+
+                message:
+                    'Voice uploaded. SmartEduBuddy is processing the question.',
+            });
+
+
+        // =====================================================
+        // BACKGROUND PROCESSING
+        // =====================================================
+
+        (
+            async () => {
+
+                try {
+
+                    console.log(
+                        `[Robot Job ${jobId}] Speech recognition started`
+                    );
+
+
+                    // =========================================
+                    // SAME WORKING SPEECH CALL
+                    // =========================================
+
+                    const speechResult =
+                        await transcribeAudio(
+
+                            audioBuffer,
+
+                            mimeType
+                        );
+
+
+                    const transcript =
+                        String(
+
+                            speechResult.transcript ||
+
+                            ''
+                        )
+                            .trim();
+
+
+                    if (
+                        !transcript ||
+                        transcript
+                            .toUpperCase() ===
+                        'NO_SPEECH'
+                    ) {
+
+                        throw new Error(
+                            'NO_SPEECH'
+                        );
+                    }
+
+
+                    console.log(
+                        `[Robot Job ${jobId}] CHILD SAID: ${transcript}`
+                    );
+
+
+                    // =========================================
+                    // UPDATE JOB
+                    // =========================================
+
+                    const processingJob =
+                        robotJobs.get(
+                            jobId
+                        );
+
+
+                    if (
+                        processingJob
+                    ) {
+
+                        processingJob.transcript =
+                            transcript;
+
+
+                        processingJob.speechModel =
+                            speechResult.model ||
+                            null;
+                    }
+
+
+                    // =========================================
+                    // SAME WORKING GEMINI CALL
+                    // =========================================
+
+                    console.log(
+                        `[Robot Job ${jobId}] Asking Gemini...`
+                    );
+
+
+                    const aiResult =
+                        await queryGemini(
+
+                            transcript,
+
+                            {
+
+                                childName,
+
+                                childAge,
+                            }
+                        );
+
+
+                    const completeAnswer =
+                        String(
+
+                            aiResult.text ||
+
+                            ''
+                        )
+                            .trim();
+
+
+                    if (
+                        !completeAnswer
+                    ) {
+
+                        throw new Error(
+                            'Gemini returned empty answer.'
+                        );
+                    }
+
+
+                    console.log(
+                        `[Robot Job ${jobId}] Gemini answer complete`
+                    );
+
+
+                    // =========================================
+                    // SAME WORKING TTS CALL
+                    // =========================================
+
+                    console.log(
+                        `[Robot Job ${jobId}] Creating TTS...`
+                    );
+
+
+                    const audio =
+                        await createAudio(
+                            completeAnswer
+                        );
+
+
+                    if (
+                        !audio ||
+                        !audio.audioId
+                    ) {
+
+                        throw new Error(
+                            'TTS returned no audio ID.'
+                        );
+                    }
+
+
+                    const audioUrl =
+                        `${publicBaseUrl}/audio/${audio.audioId}.mp3`;
+
+
+                    // =========================================
+                    // JOB READY
+                    // =========================================
+
+                    robotJobs.set(
+
+                        jobId,
+
+                        {
+
+                            status:
+                                'READY',
+
+                            createdAt,
+
+                            transcript,
+
+                            lang:
+                                audio.lang,
+
+                            audioUrl,
+
+                            speechModel:
+                                speechResult.model ||
+                                null,
+
+                            answerModel:
+                                aiResult.model ||
+                                null,
+
+                            restricted:
+                                aiResult.restricted ||
+                                false,
+
+                            restrictionReason:
+                                aiResult.reason ||
+                                null,
+
+                            error:
+                                null,
+                        }
+                    );
+
+
+                    console.log('');
+
+                    console.log(
+                        `[Robot Job ${jobId}] ✅ READY`
+                    );
+
+
+                    console.log(
+                        `[Robot Job ${jobId}] Audio URL: ${audioUrl}`
+                    );
+
+
+                } catch (
+                error
+                ) {
+
+                    console.error(
+                        `[Robot Job ${jobId}] ❌ ERROR:`,
+                        error.message
+                    );
+
+
+                    const existingJob =
+                        robotJobs.get(
+                            jobId
+                        );
+
+
+                    robotJobs.set(
+
+                        jobId,
+
+                        {
+
+                            status:
+                                'ERROR',
+
+                            createdAt,
+
+                            transcript:
+                                existingJob
+                                    ?.transcript ||
+                                null,
+
+                            lang:
+                                null,
+
+                            audioUrl:
+                                null,
+
+                            speechModel:
+                                existingJob
+                                    ?.speechModel ||
+                                null,
+
+                            answerModel:
+                                null,
+
+                            restricted:
+                                false,
+
+                            restrictionReason:
+                                null,
+
+                            error:
+                                error.message,
+                        }
+                    );
+                }
+
+            }
+        )();
+    }
+);
+
+
+// ============================================================
+// NEW ESP8266 JOB STATUS
+//
+// GET
+//
+// /api/voice/job/:jobId
+//
+// Responses:
+//
+// PROCESSING
+// READY
+// ERROR
+// ============================================================
+
+router.get(
+
+    '/api/voice/job/:jobId',
+
+    (
+        req,
+        res
+    ) => {
+
+        cleanupRobotJobs();
+
+
+        const jobId =
+            req.params.jobId;
+
+
+        const job =
+            robotJobs.get(
+                jobId
+            );
+
+
+        // =====================================================
+        // JOB NOT FOUND
+        // =====================================================
+
+        if (
+            !job
+        ) {
+
+            return res
+                .status(
+                    404
+                )
+                .json({
+
+                    success:
+                        false,
+
+                    status:
+                        'NOT_FOUND',
+
+                    error:
+                        'JOB_NOT_FOUND',
+
+                    message:
+                        'Voice processing job was not found or has expired.',
+                });
+        }
+
+
+        // =====================================================
+        // PROCESSING
+        // =====================================================
+
+        if (
+            job.status ===
+            'PROCESSING'
+        ) {
+
+            return res.json({
+
+                success:
+                    true,
+
+                status:
+                    'PROCESSING',
+
+                transcript:
+                    job.transcript,
+
+                speechModel:
+                    job.speechModel,
+
+                message:
+                    'SmartEduBuddy is still processing the question.',
+            });
+        }
+
+
+        // =====================================================
+        // ERROR
+        // =====================================================
+
+        if (
+            job.status ===
+            'ERROR'
+        ) {
+
+            return res.json({
+
+                success:
+                    false,
+
+                status:
+                    'ERROR',
+
+                transcript:
+                    job.transcript,
+
+                error:
+                    job.error,
+            });
+        }
+
+
+        // =====================================================
+        // READY
+        // =====================================================
+
+        return res.json({
+
+            success:
+                true,
+
+            status:
+                'READY',
+
+            transcript:
+                job.transcript,
+
+            lang:
+                job.lang,
+
+            restricted:
+                job.restricted,
+
+            restrictionReason:
+                job.restrictionReason,
+
+            speechModel:
+                job.speechModel,
+
+            answerModel:
+                job.answerModel,
+
+            audioUrl:
+                job.audioUrl,
+
+            error:
+                null,
+        });
+    }
+);
+
+
+// ============================================================
+// MODULE EXPORT
+//
+// MUST BE LAST LINE
+// ============================================================
+
 module.exports =
     router;
-
-    

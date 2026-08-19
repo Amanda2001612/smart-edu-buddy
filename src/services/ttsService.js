@@ -1,5 +1,7 @@
 /**
+ * ============================================================
  * SmartEduBuddy Bilingual TTS
+ * ============================================================
  *
  * English answer
  *      ↓
@@ -9,10 +11,31 @@
  *      ↓
  * lang=si
  *
- * Complete answer is split into
- * TTS chunks without intentionally
- * shortening the answer.
+ * IMPORTANT:
+ *
+ * The COMPLETE answer is converted to speech.
+ *
+ * Long answers are split into Google TTS chunks.
+ *
+ * ALL chunks are downloaded first.
+ *
+ * ALL chunks are merged.
+ *
+ * ONLY THEN createAudio() returns.
+ *
+ * Therefore:
+ *
+ * TTS COMPLETE
+ *      ↓
+ * Robot Job READY
+ *      ↓
+ * ESP8266 downloads final MP3
+ *      ↓
+ * Speaker
+ *
+ * ============================================================
  */
+
 
 const googleTTS =
   require(
@@ -34,6 +57,10 @@ const {
   );
 
 
+// ============================================================
+// IN-MEMORY AUDIO STORE
+// ============================================================
+
 const audioStore =
   new Map();
 
@@ -42,9 +69,10 @@ const AUDIO_TTL =
   15 * 60 * 1000;
 
 
-/**
- * Remove old audio.
- */
+// ============================================================
+// REMOVE OLD AUDIO
+// ============================================================
+
 function cleanupAudioStore() {
 
   const now =
@@ -68,23 +96,36 @@ function cleanupAudioStore() {
       audioStore.delete(
         audioId
       );
+
+
+      console.log(
+        `[TTS] Removed expired audio: ${audioId}`
+      );
     }
   }
 }
 
 
-/**
- * Sinhala Unicode detection.
- */
+// ============================================================
+// LANGUAGE DETECTION
+//
+// Sinhala Unicode range:
+// U+0D80 → U+0DFF
+// ============================================================
+
 function detectLanguage(
   text
 ) {
 
+  const value =
+    String(
+      text || ''
+    );
+
+
   const hasSinhala =
     /[\u0D80-\u0DFF]/.test(
-      String(
-        text || ''
-      )
+      value
     );
 
 
@@ -94,12 +135,21 @@ function detectLanguage(
 }
 
 
-/**
- * Clean formatting only.
- *
- * NO substring().
- * NO character truncation.
- */
+// ============================================================
+// CLEAN TEXT
+//
+// IMPORTANT:
+//
+// This function DOES NOT shorten
+// the educational answer.
+//
+// No substring()
+// No slice()
+// No fixed character limit
+//
+// Only formatting is cleaned.
+// ============================================================
+
 function cleanText(
   text
 ) {
@@ -108,11 +158,13 @@ function cleanText(
     text || ''
   )
 
+    // Remove markdown formatting.
     .replace(
       /[*_#`~]/g,
       ''
     )
 
+    // Normalize whitespace.
     .replace(
       /\s+/g,
       ' '
@@ -122,15 +174,26 @@ function cleanText(
 }
 
 
-/**
- * Download one TTS MP3 chunk.
- */
+// ============================================================
+// DOWNLOAD ONE GOOGLE TTS CHUNK
+// ============================================================
+
 async function fetchAudioBuffer(
-  url
+  url,
+  index,
+  total
 ) {
 
   const controller =
     new AbortController();
+
+
+  const timeoutMs =
+    Number(
+      config.api.googleTTS
+        .timeoutMs
+    ) ||
+    30000;
 
 
   const timer =
@@ -140,12 +203,16 @@ async function fetchAudioBuffer(
         controller.abort();
 
       },
-      config.api.googleTTS
-        .timeoutMs
+      timeoutMs
     );
 
 
   try {
+
+    console.log(
+      `[TTS] Fetching chunk ${index}/${total}`
+    );
+
 
     const response =
       await fetch(
@@ -178,7 +245,7 @@ async function fetchAudioBuffer(
     ) {
 
       throw new Error(
-        `Google TTS HTTP ${response.status}`
+        `Google TTS HTTP ${response.status} on chunk ${index}/${total}`
       );
     }
 
@@ -200,12 +267,35 @@ async function fetchAudioBuffer(
     ) {
 
       throw new Error(
-        'TTS returned empty audio.'
+        `TTS returned empty audio for chunk ${index}/${total}`
       );
     }
 
 
+    console.log(
+      `[TTS] Chunk ${index}/${total} downloaded: ${buffer.length} bytes`
+    );
+
+
     return buffer;
+
+
+  } catch (
+  error
+  ) {
+
+    if (
+      error.name ===
+      'AbortError'
+    ) {
+
+      throw new Error(
+        `Google TTS timeout on chunk ${index}/${total}`
+      );
+    }
+
+
+    throw error;
 
 
   } finally {
@@ -217,18 +307,32 @@ async function fetchAudioBuffer(
 }
 
 
-/**
- * Generate TTS for COMPLETE answer.
- */
+// ============================================================
+// GENERATE COMPLETE AUDIO
+//
+// getAllAudioUrls()
+// automatically splits long text.
+//
+// Example:
+//
+// Long educational answer
+//      ↓
+// Part 1
+// Part 2
+// Part 3
+//      ↓
+// Download ALL
+//      ↓
+// Buffer.concat()
+//      ↓
+// One complete MP3 buffer
+// ============================================================
+
 async function generateCompleteAudio(
   text,
   lang
 ) {
 
-  /**
-   * getAllAudioUrls handles
-   * long text using chunks.
-   */
   const parts =
     googleTTS
       .getAllAudioUrls(
@@ -253,13 +357,26 @@ async function generateCompleteAudio(
 
   if (
     !parts ||
-    parts.length === 0
+    parts.length ===
+    0
   ) {
 
     throw new Error(
       'TTS generated no audio parts.'
     );
   }
+
+
+  console.log('');
+
+  console.log(
+    '==============================================='
+  );
+
+
+  console.log(
+    '🔊 SMARTEDUBUDDY TTS'
+  );
 
 
   console.log(
@@ -277,9 +394,27 @@ async function generateCompleteAudio(
   );
 
 
+  console.log(
+    '==============================================='
+  );
+
+
   const buffers =
     [];
 
+
+  let totalBytes =
+    0;
+
+
+  // ==========================================================
+  // IMPORTANT:
+  //
+  // Sequential await.
+  //
+  // We do NOT finish until every
+  // TTS audio chunk has downloaded.
+  // ==========================================================
 
   for (
     let index = 0;
@@ -292,38 +427,141 @@ async function generateCompleteAudio(
       parts[index];
 
 
+    console.log('');
+
     console.log(
       `[TTS] Downloading ${index + 1}/${parts.length}`
     );
 
 
+    if (
+      !part ||
+      !part.url
+    ) {
+
+      throw new Error(
+        `Invalid TTS URL at chunk ${index + 1}`
+      );
+    }
+
+
     const buffer =
       await fetchAudioBuffer(
-        part.url
+
+        part.url,
+
+        index + 1,
+
+        parts.length
       );
 
 
     buffers.push(
       buffer
     );
+
+
+    totalBytes +=
+      buffer.length;
+
+
+    console.log(
+      `[TTS] Progress: ${index + 1}/${parts.length}`
+    );
   }
 
 
-  return Buffer.concat(
-    buffers
+  // ==========================================================
+  // MERGE EVERY MP3 CHUNK
+  // ==========================================================
+
+  const completeBuffer =
+    Buffer.concat(
+      buffers
+    );
+
+
+  if (
+    !completeBuffer ||
+    completeBuffer.length ===
+    0
+  ) {
+
+    throw new Error(
+      'Final TTS audio buffer is empty.'
+    );
+  }
+
+
+  console.log('');
+
+  console.log(
+    `[TTS] All ${parts.length} chunks downloaded`
   );
+
+
+  console.log(
+    `[TTS] Expected merged bytes: ${totalBytes}`
+  );
+
+
+  console.log(
+    `[TTS] Final MP3 bytes: ${completeBuffer.length}`
+  );
+
+
+  console.log(
+    '✅ [TTS] COMPLETE AUDIO GENERATED'
+  );
+
+
+  console.log(
+    '==============================================='
+  );
+
+
+  return completeBuffer;
 }
 
 
-/**
- * Create audio record.
- */
+// ============================================================
+// CREATE AUDIO
+//
+// CRITICAL FIX:
+//
+// OLD:
+// ------
+//
+// generateCompleteAudio(...)
+//     .then(...);
+//
+// return {
+//    audioId
+// };
+//
+// That returned BEFORE audio was complete.
+//
+//
+// NEW:
+// ------
+//
+// const completeBuffer =
+//     await generateCompleteAudio(...);
+//
+// ONLY THEN return audioId.
+//
+// ============================================================
+
 async function createAudio(
   text
 ) {
 
   cleanupAudioStore();
 
+
+  // ==========================================================
+  // CLEAN COMPLETE ANSWER
+  // ==========================================================
 
   const completeText =
     cleanText(
@@ -341,16 +579,35 @@ async function createAudio(
   }
 
 
+  // ==========================================================
+  // DETECT LANGUAGE
+  // ==========================================================
+
   const lang =
     detectLanguage(
       completeText
     );
 
 
+  // ==========================================================
+  // CREATE AUDIO ID
+  // ==========================================================
+
   const audioId =
     crypto
       .randomUUID();
 
+
+  console.log('');
+
+  console.log(
+    `[TTS] Creating complete audio: ${audioId}`
+  );
+
+
+  // ==========================================================
+  // CREATE STORE RECORD
+  // ==========================================================
 
   const item = {
 
@@ -376,61 +633,127 @@ async function createAudio(
   );
 
 
-  /**
-   * Generate immediately
-   * in background.
-   */
-  item.generationPromise =
-    generateCompleteAudio(
-      completeText,
-      lang
-    )
+  try {
 
-      .then(
-        buffer => {
+    // ========================================================
+    // CRITICAL:
+    //
+    // STORE PROMISE
+    // ========================================================
 
-          item.buffer =
-            buffer;
-
-
-          console.log(
-            `[TTS] Complete audio ready: ${audioId}`
-          );
-
-
-          return buffer;
-        }
-      )
-
-      .catch(
-        error => {
-
-          console.error(
-            '[TTS Error]:',
-            error.message
-          );
-
-
-          throw error;
-        }
+    item.generationPromise =
+      generateCompleteAudio(
+        completeText,
+        lang
       );
 
 
-  return {
+    // ========================================================
+    // CRITICAL FIX:
+    //
+    // WAIT HERE.
+    //
+    // createAudio() will NOT return
+    // until:
+    //
+    // chunk 1 downloaded
+    // chunk 2 downloaded
+    // chunk 3 downloaded
+    // ...
+    // merged MP3 complete
+    //
+    // ========================================================
 
-    audioId,
+    const completeBuffer =
+      await item
+        .generationPromise;
 
-    lang,
 
-    spokenText:
-      completeText,
-  };
+    // ========================================================
+    // SAVE FINAL COMPLETE AUDIO
+    // ========================================================
+
+    item.buffer =
+      completeBuffer;
+
+
+    /*
+     * Promise is no longer needed
+     * because buffer is ready.
+     */
+    item.generationPromise =
+      null;
+
+
+    console.log('');
+
+    console.log(
+      `[TTS] Complete audio ready: ${audioId}`
+    );
+
+
+    console.log(
+      `[TTS] Stored bytes: ${item.buffer.length}`
+    );
+
+
+    console.log(
+      `[TTS] createAudio() completed successfully`
+    );
+
+
+    // ========================================================
+    // ONLY RETURN AFTER COMPLETE AUDIO IS READY
+    // ========================================================
+
+    return {
+
+      audioId,
+
+      lang,
+
+      spokenText:
+        completeText,
+
+      size:
+        item.buffer.length,
+    };
+
+
+  } catch (
+  error
+  ) {
+
+    console.error(
+      '[TTS Error]:',
+      error.message
+    );
+
+
+    // Remove broken audio record.
+    audioStore.delete(
+      audioId
+    );
+
+
+    throw error;
+  }
 }
 
 
-/**
- * Get final complete MP3.
- */
+// ============================================================
+// GET COMPLETE MP3 BUFFER
+//
+// Used by:
+//
+// GET /audio/:audioId.mp3
+//
+// Because createAudio() now waits,
+// normally item.buffer is already ready.
+//
+// Promise support is kept as fallback.
+// ============================================================
+
 async function getAudioBuffer(
   audioId
 ) {
@@ -448,30 +771,96 @@ async function getAudioBuffer(
     !item
   ) {
 
+    console.log(
+      `[TTS] Audio not found: ${audioId}`
+    );
+
+
     return null;
   }
 
+
+  // ==========================================================
+  // NORMAL CASE:
+  // COMPLETE AUDIO ALREADY READY
+  // ==========================================================
 
   if (
     item.buffer
   ) {
 
+    console.log(
+      `[TTS] Serving complete audio: ${audioId}`
+    );
+
+
+    console.log(
+      `[TTS] Audio bytes: ${item.buffer.length}`
+    );
+
+
     return item.buffer;
   }
 
+
+  // ==========================================================
+  // SAFETY FALLBACK
+  // ==========================================================
 
   if (
     item.generationPromise
   ) {
 
-    return await item
-      .generationPromise;
+    console.log(
+      `[TTS] Waiting for audio generation: ${audioId}`
+    );
+
+
+    try {
+
+      const buffer =
+        await item
+          .generationPromise;
+
+
+      item.buffer =
+        buffer;
+
+
+      item.generationPromise =
+        null;
+
+
+      return buffer;
+
+
+    } catch (
+    error
+    ) {
+
+      console.error(
+        `[TTS] Generation failed for ${audioId}:`,
+        error.message
+      );
+
+
+      audioStore.delete(
+        audioId
+      );
+
+
+      throw error;
+    }
   }
 
 
   return null;
 }
 
+
+// ============================================================
+// EXPORTS
+// ============================================================
 
 module.exports = {
 
